@@ -1,0 +1,65 @@
+version: "3.7"
+
+services:
+  proxy:
+    image: traefik:v2.2
+    command:
+      - --api.insecure=true
+      - --providers.docker
+    ports:
+      - 80:80
+      - 443:443
+      - 8080:8080
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+
+  web:
+    image: nginx:latest
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.web.rule=Host(`web.docker.localhost`)"
+    volumes:
+      - ./code:/code
+      - ./site.conf:/etc/nginx/conf.d/site.conf
+    depends_on:
+      - proxy
+      - php
+
+  php:
+    build:
+      context: .
+      dockerfile: Dockerfile-php
+    volumes:
+      - ./code:/code
+    depends_on:
+      - redis
+      - mysql
+
+  redis:
+    image: redis:latest
+
+  mysql:
+    image: mysql/mysql-server
+    # build:
+    #   context: .
+    #   dockerfile: Dockerfile-mysql
+    command: --default-authentication-plugin=mysql_native_password
+    environment:
+      MYSQL_DATABASE: games
+      MYSQL_SUER: user
+      MYSQL_PASSWORD: password
+      MYSQL_ROOT_PASSWORD: password
+    volumes:
+      - ./docker-entrypoint-initdb.d:/docker-entrypoint-initdb.d
+
+  admin:
+    image: phpmyadmin/phpmyadmin
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.db.rule=Host(`db.docker.localhost`)"
+    ports:
+      - 8088:80
+    environment:
+      - PMA_ARBITRARY=1
+    depends_on:
+      - mysql
